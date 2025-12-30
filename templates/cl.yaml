@@ -1,0 +1,61 @@
+cover_letter:
+  # Styling and structure template - content will be filled by application
+  font:
+    family: "Helvetica"
+    size: 11
+  margins:
+    top: 1
+    bottom: 1
+    left: 1
+    right: 1
+  spacing:
+    line_height: 1.2
+    paragraph_spacing: 0.5
+
+  # Header section styling
+  header:
+    alignment: left
+    font_size: 11
+    spacing_after: 0.3
+
+  # Date styling
+  date:
+    alignment: left
+    format: "%B %d, %Y"
+    spacing_after: 0.5
+
+  # Recipient styling
+  recipient:
+    alignment: left
+    spacing_after: 0.3
+
+  # Salutation styling
+  salutation:
+    text: "Dear Hiring Manager,"
+    alignment: left
+    spacing_after: 0.3
+
+  # Body styling
+  body:
+    alignment: justified
+    font_size: 11
+    line_spacing: 1.2
+    paragraph_spacing: 0.3
+
+  # Closing styling
+  closing:
+    text: "Sincerely,"
+    alignment: left
+    spacing_before: 0.5
+    spacing_after: 0.3
+
+  # Signature styling
+  signature:
+    alignment: left
+    font_size: 11
+
+  # Page settings
+  page:
+    size: A4
+    orientation: portrait
+    margins: [1, 1, 1, 1]  # top, right, bottom, left in inches

@@ -10,7 +10,7 @@ name = "cv-agent"
 version = "0.1.0"
 description = "AI-powered CV and cover letter generation system"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 authors = [
     {name = "CV Agent Team"}
 ]
@@ -26,9 +26,6 @@ dependencies = [
     # Graph visualization
     "graphviz>=0.21",
 
-    # Translation services
-    "googletrans>=4.0.0rc1",
-
     # LangChain and RAG (optional but recommended)
     "langchain>=0.1.0",
     "langchain-community>=0.0.13",
@@ -38,8 +35,14 @@ dependencies = [
     # PDF generation for cover letters
     "reportlab>=4.0.0",
 
+    # CV/Resume rendering
+    "rendercv[full]>=2.0.0",
+
     # OpenAI for LLM features (optional)
     "openai>=1.0.0",
+
+    # Environment variable management
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]

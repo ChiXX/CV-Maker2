@@ -362,8 +362,6 @@ llm:
   provider: "openrouter"
   model: "anthropic/claude-3.5-sonnet"
   temperature: 0.1
-translation:
-  provider: "google"
 ```
 
 **Note**: CV/CL templates are now configured globally in `cv_config.yaml`. User configs only contain personal data and preferences.

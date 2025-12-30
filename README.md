@@ -12,7 +12,7 @@ The system follows a structured workflow to create personalized job applications
 
 🤖 **AI-Powered Generation**: Uses advanced RAG (Retrieval-Augmented Generation) to customize your CV and cover letter based on job requirements
 
-🌐 **Multi-Language Support**: Handles job descriptions in English, Swedish, and Chinese with automatic translation
+📄 **Smart Job Processing**: Extracts and analyzes job descriptions from various sources
 
 📄 **Professional PDF Output**: Generates high-quality PDF documents using RenderCV's professional templates
 
@@ -149,7 +149,6 @@ The CV Agent consists of several key components:
 ### Core Components
 
 - **Job Extractor**: Scrapes and extracts job descriptions from various job sites
-- **Translation Service**: Translates Swedish job descriptions to English
 - **RAG System**: Stores and retrieves personal career information using vector search
 - **CV Generator**: Customizes RenderCV YAML templates based on job requirements
 - **Cover Letter Generator**: Creates tailored cover letters using retrieved context
@@ -208,8 +207,6 @@ llm:
   model: "anthropic/claude-3.5-sonnet"
   temperature: 0.1
   max_tokens: 4000
-translation:
-  provider: "google"
   api_key_env_var: "GOOGLE_TRANSLATE_API_KEY"
 ```
 
@@ -270,9 +267,7 @@ Get your OpenRouter API key at: https://openrouter.ai/keys
 
 ## Language Support
 
-- **English**: Native support
-- **Swedish**: Automatic translation to English for summary
-- **Chinese**: Detection and processing support
+- **English**: Primary language support
 
 ## Output Structure
 
@@ -339,7 +334,6 @@ cv-agent/
 ├── langgraph_agent.py         # LangGraph workflow
 ├── config.py                  # Configuration management
 ├── job_extractor.py           # Job description extraction
-├── translation.py             # Multi-language support
 ├── rag_system.py              # Vector database management
 ├── cv_generator.py            # CV customization with validation
 ├── cover_letter_generator.py  # Cover letter creation with validation
@@ -421,9 +415,6 @@ pytest tests/
 **"RenderCV command not found"**
 - Ensure RenderCV is installed: `pip install rendercv[full]`
 
-**"Translation failed"**
-- Verify GOOGLE_TRANSLATE_API_KEY is set
-- Check internet connection for translation services
 
 **"PDF generation failed"**
 - Ensure Typst is installed (RenderCV requirement)

@@ -14,7 +14,7 @@ from config import Config, CVCLConfig
 from job_extractor import JobExtractor
 from rag_system import RAGSystem
 from cv_generator import CVGenerator
-from cover_letter_generator import CoverLetterGenerator
+from cl_generator import CoverLetterGenerator
 from langgraph_agent import LangGraphAgent
 from utils import sanitize_filename
 
@@ -24,7 +24,7 @@ class CVAgent:
 
     def __init__(self, config: Config, cvcl_config: Optional[CVCLConfig] = None, verbose: bool = False):
         self.config = config
-        self.cvcl_config = cvcl_config or CVCLConfig.load()
+        self.cvcl_config = cvcl_config or CVCLConfig()
         self.verbose = verbose
         self.console = Console()
 
@@ -64,6 +64,7 @@ class CVAgent:
                     self.console.print("[yellow]⚠️  Process completed but output directory not created[/yellow]")
             else:
                 self.console.print("[red]❌ Process failed to complete successfully[/red]")
+
     def setup_rag_database(
         self,
         personal_info_file: Optional[pathlib.Path] = None,
@@ -136,7 +137,15 @@ class CVAgent:
 Job URL: {job_info.get('url', 'N/A')}
 Company: {job_info.get('company', 'N/A')}
 Position: {job_info.get('title', 'N/A')}
-Location: {job_info.get('location', 'N/A')}
+
+### Company:
+{job_info.get('company', 'N/A')}
+
+### JD:
+{job_info.get('description', 'N/A')}
+
+---
+Source: {job_info.get('url', 'N/A')}
 
 Job Description:
 {job_info.get('description', 'N/A')}

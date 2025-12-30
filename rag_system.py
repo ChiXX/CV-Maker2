@@ -16,14 +16,14 @@ except ImportError:
     RecursiveCharacterTextSplitter = None
     Document = None
 
-from config import RAGConfig
+from typing import Dict, Any
 from rich.console import Console
 
 
 class RAGSystem:
     """Manages personal career data for CV customization"""
 
-    def __init__(self, config: RAGConfig, verbose: bool = False):
+    def __init__(self, config: Dict[str, Any], verbose: bool = False):
         self.config = config
         self.verbose = verbose
         self.console = Console()
@@ -34,10 +34,10 @@ class RAGSystem:
             self.vectorstore = None
         else:
             self.vectorstore = None
-            self.embeddings = OpenAIEmbeddings(model=config.embedding_model)
+            self.embeddings = OpenAIEmbeddings(model=config["embedding_model"])
             self.text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=config.chunk_size,
-                chunk_overlap=config.chunk_overlap,
+                chunk_size=config["chunk_size"],
+                chunk_overlap=config["chunk_overlap"],
             )
 
     async def initialize_database(self) -> None:
@@ -49,17 +49,17 @@ class RAGSystem:
         documents = []
 
         # Load personal info file
-        if self.config.personal_info_file and self.config.personal_info_file.exists():
+        if self.config["personal_info_file"] and self.config["personal_info_file"].exists():
             docs = self._load_personal_info_file()
             documents.extend(docs)
 
         # Load career data directory
-        if self.config.career_data_dir and self.config.career_data_dir.exists():
+        if self.config["career_data_dir"] and self.config["career_data_dir"].exists():
             docs = self._load_career_data_directory()
             documents.extend(docs)
 
         # Load code samples directory
-        if self.config.code_samples_dir and self.config.code_samples_dir.exists():
+        if self.config["code_samples_dir"] and self.config["code_samples_dir"].exists():
             docs = self._load_code_samples_directory()
             documents.extend(docs)
 
@@ -120,11 +120,11 @@ class RAGSystem:
             return
 
         # Create vector store directory if it doesn't exist
-        self.config.vector_store_path.mkdir(parents=True, exist_ok=True)
+        self.config["vector_store_path"].mkdir(parents=True, exist_ok=True)
 
         # Initialize Chroma vector store
         self.vectorstore = Chroma(
-            persist_directory=str(self.config.vector_store_path),
+            persist_directory=str(self.config["vector_store_path"]),
             embedding_function=self.embeddings,
         )
 
@@ -133,8 +133,8 @@ class RAGSystem:
         documents = []
 
         try:
-            with open(self.config.personal_info_file, 'r', encoding='utf-8') as f:
-                if self.config.personal_info_file.suffix.lower() in ['.json']:
+            with open(self.config["personal_info_file"], 'r', encoding='utf-8') as f:
+                if self.config["personal_info_file"].suffix.lower() in ['.json']:
                     data = json.load(f)
                     content = json.dumps(data, indent=2)
                 else:
@@ -143,7 +143,7 @@ class RAGSystem:
             doc = Document(
                 page_content=content,
                 metadata={
-                    'source': str(self.config.personal_info_file),
+                    'source': str(self.config["personal_info_file"]),
                     'category': 'personal_info',
                     'type': 'personal_data'
                 }
@@ -159,10 +159,10 @@ class RAGSystem:
         """Load career data from directory"""
         documents = []
 
-        if not self.config.career_data_dir.exists():
+        if not self.config["career_data_dir"].exists():
             return documents
 
-        for file_path in self.config.career_data_dir.rglob('*'):
+        for file_path in self.config["career_data_dir"].rglob('*'):
             if file_path.is_file() and file_path.suffix.lower() in ['.txt', '.md', '.json', '.yaml', '.yml']:
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
@@ -195,10 +195,10 @@ class RAGSystem:
         """Load code samples from directory"""
         documents = []
 
-        if not self.config.code_samples_dir.exists():
+        if not self.config["code_samples_dir"].exists():
             return documents
 
-        for file_path in self.config.code_samples_dir.rglob('*'):
+        for file_path in self.config["code_samples_dir"].rglob('*'):
             if file_path.is_file() and file_path.suffix.lower() in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs']:
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:

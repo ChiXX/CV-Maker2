@@ -1,0 +1,8 @@
+# CV Template - RenderCV v2.x format
+cv:
+  name: Your Name
+  headline: ""
+  sections: {}
+
+design:
+  theme: classic

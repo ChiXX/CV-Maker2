@@ -18,8 +18,15 @@ import typer
 from rich import print
 from rich.console import Console
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, use system environment variables
+
 from agent import CVAgent
-from config import Config, LLMConfig, CVCLConfig
+from config import Config, CVCLConfig, save_user_personal_info
 
 console = Console()
 app = typer.Typer(
@@ -55,13 +62,12 @@ def generate(
     """
     try:
         # Load configurations
-        config = Config()
-        config.user_name = name
-        cvcl_config = CVCLConfig.load()
+        config = Config(name)
+        cvcl_config = CVCLConfig()
 
         # Set user-specific paths
-        user_paths = config.rag.get_user_paths(name)
-        config.rag.vector_store_path = user_paths["vector_store"]
+        user_paths = config.get_user_paths(name)
+        config.rag["vector_store_path"] = user_paths["vector_store"]
 
         # Override output directory if specified
         if output_dir:
@@ -113,14 +119,13 @@ def setup_rag(
     that the agent uses to generate tailored CVs and cover letters.
     """
     try:
-        config = Config.load(config_file) if config_file else Config()
-        config.user_name = name
+        config = Config(name)
 
         # Load global CV/CL configuration
-        cvcl_config = CVCLConfig.load()
+        cvcl_config = CVCLConfig()
 
         # Get user-specific paths
-        user_paths = config.rag.get_user_paths(name)
+        user_paths = config.get_user_paths(name)
 
         console.print(f"[bold blue]🔧 Initializing user profile for {name}...[/bold blue]")
 
@@ -211,9 +216,51 @@ def init_config(
     Generate a default configuration file for the CV agent.
     """
     try:
-        config = Config()
-        config.save(output_file)
-        console.print(f"[bold green]✅ Configuration file created:[/bold green] {output_file}")
+        # Create a template personal info file
+        from config import get_user_paths
+        template_data = {
+            "name": "Your Full Name",
+            "email": "your.email@example.com",
+            "phone": "+1-234-567-8900",
+            "location": {
+                "city": "Your City",
+                "country": "Your Country"
+            },
+            "linkedin": "https://linkedin.com/in/yourprofile",
+            "website": "https://yourwebsite.com",
+            "summary": "Brief professional summary highlighting your key strengths and experience.",
+            "skills": ["Skill 1", "Skill 2", "Skill 3"],
+            "experiences": [
+                {
+                    "company": "Previous Company",
+                    "position": "Your Position",
+                    "start_date": "2020-01",
+                    "end_date": "2023-12",
+                    "description": "Description of your role and achievements.",
+                    "technologies": ["Tech 1", "Tech 2"]
+                }
+            ],
+            "education": [
+                {
+                    "institution": "University Name",
+                    "degree": "Bachelor of Science",
+                    "field": "Computer Science",
+                    "graduation_year": 2023
+                }
+            ],
+            "projects": [
+                {
+                    "name": "Project Name",
+                    "description": "Description of the project and your contributions.",
+                    "technologies": ["Tech 1", "Tech 2"],
+                    "url": "https://github.com/yourusername/project"
+                }
+            ]
+        }
+        save_user_personal_info("template_user", template_data)
+        user_paths = get_user_paths("template_user")
+        console.print(f"[bold green]✅ User config template created:[/bold green] {user_paths['personal_info']}")
+        console.print("[dim]Edit this file with your personal information before running the agent.[/dim]")
 
     except Exception as e:
         console.print(f"[bold red]❌ Error:[/bold red] {str(e)}")
@@ -239,7 +286,7 @@ def graph(
     """
     try:
         # Load configuration
-        config = Config.load(config_file) if config_file else Config()
+        config = Config("default_user")  # Use default user for graph visualization
 
         console.print("[bold blue]📊 Generating agent graph visualization...[/bold blue]")
 

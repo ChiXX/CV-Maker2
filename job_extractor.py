@@ -1,6 +1,7 @@
 """Job description extraction from URLs"""
 
 import asyncio
+import os
 import re
 from typing import Dict, Any, Optional, Tuple
 from urllib.parse import urlparse
@@ -9,53 +10,82 @@ import httpx
 from bs4 import BeautifulSoup
 from rich.console import Console
 
-from translation import TranslationService
-from config import Config
+from langchain_openai import ChatOpenAI
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, use system environment variables
+
+
+JOB_EXTRACTION_PROMPT = """You are an expert job description analyst. Your task is to carefully extract and structure job posting information from web content.
+
+CONTENT SOURCE: {url}
+EXTRACTED TEXT FROM WEBPAGE:
+{text_content}
+
+INSTRUCTIONS:
+1. **Job Title**: Extract the exact job position title. Look for headings like "Job Title", "Position", or similar. If multiple titles appear, choose the most prominent one.
+
+2. **Company Name**: Extract the company/organization name. Check for logos, headers, footers, or explicit mentions. If not found, you may infer from URL domain or context.
+
+3. **Job Description**: Extract the complete job description including:
+   - Role responsibilities and duties
+   - Required qualifications and skills
+   - Experience requirements
+   - Education requirements
+   - Benefits and compensation (if mentioned)
+   - Application instructions
+   - Any other relevant job details
+
+IMPORTANT:
+- Content should be provided in English (manually translate non-English job descriptions before processing)
+- Preserve technical terms, company names, and specific jargon in their original form when appropriate
+- Remove irrelevant content like navigation menus, footers, ads, or meta information
+- If the page doesn't contain a valid job posting, use [FAILED] for JD and [UNKNOWN] for missing fields
+- Be thorough but concise - include all relevant details without unnecessary repetition
+
+OUTPUT FORMAT:
+### Title:
+[Job Title Here]
+
+### Company:
+[Company Name Here]
+
+### JD:
+[Complete job description text here, properly formatted in English]
+
+---
+Source: {url}"""
 
 
 class JobExtractor:
     """Extracts job information from various job posting URLs"""
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self, llm_config: dict = None, verbose: bool = False):
         self.verbose = verbose
         self.console = Console()
-        self.translation_service = TranslationService()
+        self.llm_config = llm_config or {}
 
-        # Common selectors for different job sites
-        self.selectors = {
-            'linkedin': {
-                'title': ['h1[data-test-id="hero-job-title"]', 'h1.job-title', '.job-title'],
-                'company': ['span[data-test-id="hero-company"]', '.company-name', '.job-company'],
-                'location': ['span[data-test-id="hero-job-location"]', '.job-location', '.location'],
-                'description': ['div[data-test-id="hero-job-description"]', '.job-description', '.description'],
-            },
-            'indeed': {
-                'title': ['h1.jobsearch-JobMetadataHeader-title', '.job-title'],
-                'company': ['div[data-company-name="true"]', '.company-name'],
-                'location': ['div[data-testid="job-location"]', '.job-location'],
-                'description': ['div[data-testid="job-description"]', '#jobDescriptionText'],
-            },
-            'glassdoor': {
-                'title': ['h1[data-test="job-title"]', '.job-title'],
-                'company': ['span[data-test="employer-name"]', '.company-name'],
-                'location': ['span[data-test="location"]', '.location'],
-                'description': ['div[data-test="job-description"]', '.job-description'],
-            },
-            'generic': {
-                'title': ['h1', 'title'],
-                'company': ['.company', '.employer', '[data-company]'],
-                'location': ['.location', '.job-location', '[data-location]'],
-                'description': ['.description', '.job-description', '#description', '[data-description]'],
-            }
-        }
+        # Initialize LangChain ChatOpenAI client for job extraction if API key is available
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        self.chat_openai = ChatOpenAI(
+            api_key=api_key,
+            base_url=self.llm_config.get('base_url', 'https://openrouter.ai/api/v1'),
+            model=self.llm_config.get('model', 'mistralai/mistral-small-3.1-24b-instruct:free'),
+            temperature=self.llm_config.get('temperature', 0.1),
+            max_tokens=self.llm_config.get('max_tokens', 2000)
+        )
 
     async def extract_job_info(self, url: str) -> Dict[str, Any]:
-        """Extract job information from a URL"""
+        """Extract job information from a URL using LLM (simplified approach)"""
         if self.verbose:
-            self.console.print(f"[dim]Fetching URL: {url}[/dim]")
+            self.console.print(f"🌐 Fetching job page content: {url}")
 
         try:
-            # Fetch webpage content
+            # Fetch HTML content
             async with httpx.AsyncClient(
                 timeout=30.0,
                 follow_redirects=True,
@@ -66,164 +96,89 @@ class JobExtractor:
                 response = await client.get(url)
                 response.raise_for_status()
 
-            content = response.text
-            soup = BeautifulSoup(content, 'html.parser')
+            # Extract visible text from HTML
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Determine site type and extract info
-            site_type = self._determine_site_type(url)
-            job_info = self._extract_with_selectors(soup, site_type)
+            # Remove script, style, and noscript tags
+            for tag in soup(["script", "style", "noscript"]):
+                tag.decompose()
 
-            # Add URL and clean up extracted data
-            job_info['url'] = url
-            job_info['site_type'] = site_type
+            # Get visible text
+            raw_text = soup.get_text(separator="\n")
+            lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+            visible_text = "\n".join(lines[:200])  # Limit to first 200 lines
 
-            # Handle multi-language content
-            job_info = await self._process_multilanguage_content(job_info)
-
-            if self.verbose:
-                self.console.print(f"[dim]Extracted: {job_info.get('title', 'Unknown')} at {job_info.get('company', 'Unknown')}[/dim]")
-
-            return job_info
+            # Use LLM to extract structured information
+            return await self._extract_with_llm(url, visible_text)
 
         except Exception as e:
-            self.console.print(f"[red]Error extracting job info: {str(e)}[/red]")
+            if self.verbose:
+                self.console.print(f"❌ Failed to extract job info: {str(e)}")
             # Return basic info even if extraction fails
             return {
                 'url': url,
                 'title': 'Unknown Position',
                 'company': 'Unknown Company',
-                'location': 'Unknown Location',
                 'description': f'Failed to extract job description from {url}',
                 'error': str(e)
             }
 
-    def _determine_site_type(self, url: str) -> str:
-        """Determine the type of job site from URL"""
-        domain = urlparse(url).netloc.lower()
 
-        if 'linkedin.com' in domain:
-            return 'linkedin'
-        elif 'indeed.com' in domain:
-            return 'indeed'
-        elif 'glassdoor.com' in domain:
-            return 'glassdoor'
-        else:
-            return 'generic'
+    async def _extract_with_llm(self, url: str, visible_text: str) -> Dict[str, Any]:
+        """Use LLM to extract job information (exact approach from GitHub)"""
 
-    def _extract_with_selectors(self, soup: BeautifulSoup, site_type: str) -> Dict[str, str]:
-        """Extract job information using site-specific selectors"""
-        selectors = self.selectors.get(site_type, self.selectors['generic'])
-        job_info = {}
+        try:
+            prompt = JOB_EXTRACTION_PROMPT.format(
+                url=url,
+                text_content=visible_text
+            )
 
-        for field, selector_list in selectors.items():
-            for selector in selector_list:
-                try:
-                    element = soup.select_one(selector)
-                    if element:
-                        # Get text content and clean it up
-                        text = element.get_text(strip=True)
-                        cleaned = self._clean_text(text)
-                        # Only accept cleaned, non-empty text (avoid cookie banners / popups)
-                        if cleaned and len(cleaned) > 0:
-                            job_info[field] = cleaned
-                            break
-                except Exception:
-                    continue
-
-        # Fallback: try to extract from page title
-        if 'title' not in job_info:
-            title_tag = soup.find('title')
-            if title_tag:
-                title_text = title_tag.get_text(strip=True)
-                # Try to extract job title from page title
-                job_info['title'] = self._extract_title_from_page_title(title_text)
-
-        return job_info
-
-    def _clean_text(self, text: str) -> str:
-        """Clean extracted text content"""
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text.strip())
-
-        # Remove common unwanted strings (including cookie/banner phrases)
-        unwanted_patterns = [
-            r'View job details',
-            r'Apply now',
-            r'Save job',
-            r'Report job',
-            r'Share job',
-            r'Select which cookies you accept',
-            r'Accept all cookies',
-            r'Manage cookies',
-            r'Cookie settings',
-            r'Cookie policy',
-            r'We use cookies',
-        ]
-
-        for pattern in unwanted_patterns:
-            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-
-        return text.strip()
-
-    def _extract_title_from_page_title(self, page_title: str) -> str:
-        """Try to extract job title from page title"""
-        # Common patterns: "Job Title | Company - Site"
-        # or "Job Title at Company | Site"
-
-        # Remove site suffixes
-        title = re.sub(r'\s*[-|]\s*(indeed|linkedin|glassdoor|monster).*', '', page_title, flags=re.IGNORECASE)
-
-        # Try to extract job title before company name
-        match = re.search(r'^([^|]+?)\s*(?:at|@|[-|])\s*(.+)$', title)
-        if match:
-            return match.group(1).strip()
-
-        return title.strip()
-
-    async def _process_multilanguage_content(self, job_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Process multi-language job descriptions"""
-        description = job_info.get('description', '')
-
-        if not description:
-            return job_info
-
-        # Detect language and translate if needed
-        detected_lang = self._detect_language(description)
-
-        # If Swedish, translate to English
-        if detected_lang == 'sv':
             if self.verbose:
-                self.console.print("[dim]Detected Swedish content, translating to English...[/dim]")
+                self.console.print("🤖 Calling LLM to extract JD information")
 
-            translated_desc = await self.translation_service.translate_to_english(description)
-            if translated_desc:
-                job_info['original_description'] = description
-                job_info['description'] = translated_desc
-                job_info['original_language'] = 'sv'
-                job_info['translated'] = True
-        else:
-            job_info['original_language'] = detected_lang or 'unknown'
-            job_info['translated'] = False
+            if self.verbose:
+                self.console.print("🤖 Calling LLM to extract JD information")
 
-        return job_info
+            # Use LangChain's invoke method
+            response = await self.chat_openai.ainvoke(prompt)
+            content = response.content
 
-    def _detect_language(self, text: str) -> Optional[str]:
-        """Simple language detection based on common words"""
-        # Swedish indicators
-        swedish_words = ['och', 'att', 'är', 'för', 'med', 'som', 'den', 'det', 'vi', 'på', 'av', 'eller']
-        # Chinese indicators (simplified check)
-        chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+            jd, company, title = "", "", ""
+            # Extract in the correct order: Title, Company, JD
+            match_tt = re.search(r"### Title:\n(.*?)\n### Company:", content, re.DOTALL)
+            match_co = re.search(r"### Company:\n(.*?)\n### JD:", content, re.DOTALL)
+            match_jd = re.search(r"### JD:\n(.*?)\n---", content, re.DOTALL)
+            if match_tt:
+                title = match_tt.group(1).strip()
+            if match_co:
+                company = match_co.group(1).strip()
+            if match_jd:
+                jd = match_jd.group(1).strip()
 
-        text_lower = text.lower()
+            if jd == "[FAILED]":
+                if self.verbose:
+                    self.console.print("❌ Failed to fetch job page")
+                return {
+                    'title': 'Unknown Position',
+                    'company': 'Unknown Company',
+                    'description': f'Failed to extract job description from {url}'
+                }
 
-        # Check for Swedish
-        swedish_count = sum(1 for word in swedish_words if word in text_lower)
-        if swedish_count >= 2:
-            return 'sv'
+            if self.verbose:
+                self.console.print(f"✅ Extraction completed → Company: {company}, Title: {title}")
 
-        # Check for Chinese
-        if len(chinese_chars) > len(text) * 0.1:  # More than 10% Chinese characters
-            return 'zh'
+            return {
+                'title': title,
+                'company': company,
+                'description': jd
+            }
 
-        # Default to English
-        return 'en'
+        except Exception as e:
+            if self.verbose:
+                self.console.print(f"[yellow]LLM extraction failed: {str(e)}[/yellow]")
+            return {
+                'title': 'Unknown Position',
+                'company': 'Unknown Company',
+                'description': f'LLM extraction failed for {url}: {str(e)}'
+            }
+
