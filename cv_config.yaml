@@ -1,0 +1,7 @@
+cv:
+  template_dir: ./cv_templates
+  base_cv_file: ./cv_templates/base_cv.yaml
+  theme: classic
+cover_letter:
+  template_file: ./cv_templates/cover_letter_template.md
+output_dir: ./generated_applications
