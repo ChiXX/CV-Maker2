@@ -12,19 +12,13 @@ from rich.console import Console
 
 from langchain_openai import ChatOpenAI
 
-# Load environment variables from .env file
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # python-dotenv not installed, use system environment variables
 
 
 JOB_EXTRACTION_PROMPT = """You are an expert job description analyst. Your task is to carefully extract and structure job posting information from web content.
 
 CONTENT SOURCE: {url}
 EXTRACTED TEXT FROM WEBPAGE:
-{text_content}
+{visible_text}
 
 INSTRUCTIONS:
 1. **Job Title**: Extract the exact job position title. Look for headings like "Job Title", "Position", or similar. If multiple titles appear, choose the most prominent one.
@@ -41,10 +35,9 @@ INSTRUCTIONS:
    - Any other relevant job details
 
 IMPORTANT:
-- Content should be provided in English (manually translate non-English job descriptions before processing)
+- If the content is not in English, translate it into English befor filing the JD
 - Preserve technical terms, company names, and specific jargon in their original form when appropriate
 - Remove irrelevant content like navigation menus, footers, ads, or meta information
-- If the page doesn't contain a valid job posting, use [FAILED] for JD and [UNKNOWN] for missing fields
 - Be thorough but concise - include all relevant details without unnecessary repetition
 
 OUTPUT FORMAT:
@@ -57,8 +50,22 @@ OUTPUT FORMAT:
 ### JD:
 [Complete job description text here, properly formatted in English]
 
----
-Source: {url}"""
+### END
+
+Only extract what's visible from the content or logically inferrable from the URL. If you cannot identify the content from the webpage, respond with:
+
+### Title:
+[UNKNOWN]
+
+### Company:
+[UNKNOWN]
+
+### JD:
+[UNKNOWN]
+
+### END
+
+"""
 
 
 class JobExtractor:
@@ -73,7 +80,7 @@ class JobExtractor:
         api_key = os.getenv('OPENROUTER_API_KEY')
         self.chat_openai = ChatOpenAI(
             api_key=api_key,
-            base_url=self.llm_config.get('base_url', 'https://openrouter.ai/api/v1'),
+            base_url=self.llm_config.get('base_url', 'google/gemini-2.0-flash-001'),
             model=self.llm_config.get('model', 'mistralai/mistral-small-3.1-24b-instruct:free'),
             temperature=self.llm_config.get('temperature', 0.1),
             max_tokens=self.llm_config.get('max_tokens', 2000)
@@ -113,13 +120,11 @@ class JobExtractor:
 
         except Exception as e:
             if self.verbose:
-                self.console.print(f"❌ Failed to extract job info: {str(e)}")
-            # Return basic info even if extraction fails
+                self.console.print("❌ Failed to extract job information")
             return {
-                'url': url,
                 'title': 'Unknown Position',
                 'company': 'Unknown Company',
-                'description': f'Failed to extract job description from {url}',
+                'description': 'Unknown Job Description',
                 'error': str(e)
             }
 
@@ -130,11 +135,8 @@ class JobExtractor:
         try:
             prompt = JOB_EXTRACTION_PROMPT.format(
                 url=url,
-                text_content=visible_text
+                visible_text=visible_text
             )
-
-            if self.verbose:
-                self.console.print("🤖 Calling LLM to extract JD information")
 
             if self.verbose:
                 self.console.print("🤖 Calling LLM to extract JD information")
@@ -147,25 +149,23 @@ class JobExtractor:
             # Extract in the correct order: Title, Company, JD
             match_tt = re.search(r"### Title:\n(.*?)\n### Company:", content, re.DOTALL)
             match_co = re.search(r"### Company:\n(.*?)\n### JD:", content, re.DOTALL)
-            match_jd = re.search(r"### JD:\n(.*?)\n---", content, re.DOTALL)
+            match_jd = re.search(r"### JD:\n(.*?)\n### END", content, re.DOTALL)
             if match_tt:
                 title = match_tt.group(1).strip()
             if match_co:
                 company = match_co.group(1).strip()
             if match_jd:
                 jd = match_jd.group(1).strip()
-
-            if jd == "[FAILED]":
+                
+            if "[UNKNOWN]" in title or "[UNKNOWN]" in company or "[UNKNOWN]" in jd:
                 if self.verbose:
-                    self.console.print("❌ Failed to fetch job page")
+                    self.console.print("❌ Failed to extract job information")
                 return {
                     'title': 'Unknown Position',
                     'company': 'Unknown Company',
-                    'description': f'Failed to extract job description from {url}'
+                    'description': 'Unknown Job Description',
+                    'error': 'Failed to extract job information'
                 }
-
-            if self.verbose:
-                self.console.print(f"✅ Extraction completed → Company: {company}, Title: {title}")
 
             return {
                 'title': title,
@@ -175,10 +175,10 @@ class JobExtractor:
 
         except Exception as e:
             if self.verbose:
-                self.console.print(f"[yellow]LLM extraction failed: {str(e)}[/yellow]")
+                self.console.print("❌ Failed to extract job information")
             return {
                 'title': 'Unknown Position',
                 'company': 'Unknown Company',
-                'description': f'LLM extraction failed for {url}: {str(e)}'
+                'description': 'Unknown Job Description'
             }
 

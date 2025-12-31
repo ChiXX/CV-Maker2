@@ -59,7 +59,7 @@ class LangGraphAgent:
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
-        """Build the LangGraph workflow"""
+        """Build the LangGraph workflow - DEBUG MODE: Only extract_job_info"""
         # Define the graph
         workflow = StateGraph(AgentState)
 
@@ -69,45 +69,43 @@ class LangGraphAgent:
         workflow.add_node("generate_cv", self._generate_cv_node)
         workflow.add_node("generate_cover_letter", self._generate_cover_letter_node)
         workflow.add_node("create_output", self._create_output_node)
-        workflow.add_node("handle_errors", self._handle_errors_node)
+        # workflow.add_node("handle_errors", self._handle_errors_node)
 
         # Define the flow
         workflow.set_entry_point("extract_job_info")
-
-        # Normal flow
         workflow.add_edge("extract_job_info", "retrieve_context")
         workflow.add_edge("retrieve_context", "generate_cv")
         workflow.add_edge("generate_cv", "generate_cover_letter")
+
         workflow.add_edge("generate_cover_letter", "create_output")
         workflow.add_edge("create_output", END)
 
         # Error handling - each node can conditionally go to error handler
-        workflow.add_conditional_edges(
-            "extract_job_info",
-            self._route_after_extract,
-            {"retrieve_context": "retrieve_context", "handle_errors": "handle_errors"}
-        )
-        workflow.add_conditional_edges(
-            "retrieve_context",
-            self._route_after_retrieve,
-            {"generate_cv": "generate_cv", "handle_errors": "handle_errors"}
-        )
-        workflow.add_conditional_edges(
-            "generate_cv",
-            self._route_after_cv_gen,
-            {"generate_cover_letter": "generate_cover_letter", "handle_errors": "handle_errors"}
-        )
-        workflow.add_conditional_edges(
-            "generate_cover_letter",
-            self._route_after_cl_gen,
-            {"create_output": "create_output", "handle_errors": "handle_errors"}
-        )
-        workflow.add_conditional_edges(
-            "create_output",
-            self._route_after_output,
-            {END: END, "handle_errors": "handle_errors"}
-        )
-        workflow.add_edge("handle_errors", END)
+        # workflow.add_conditional_edges(
+        #     "extract_job_info",
+        #     self._route_after_extract,
+        #     {"retrieve_context": "retrieve_context", "handle_errors": "handle_errors"}
+        # )
+        # workflow.add_conditional_edges(
+        #     "retrieve_context",
+        #     self._route_after_retrieve,
+        #     {"generate_cv": "generate_cv", "handle_errors": "handle_errors"}
+        # )
+        # workflow.add_conditional_edges(
+        #     "generate_cv",
+        #     self._route_after_cv_gen,
+        #     {"generate_cover_letter": "generate_cover_letter", "handle_errors": "handle_errors"}
+        # )
+        # workflow.add_conditional_edges(
+        #     "generate_cover_letter",
+        #     self._route_after_cl_gen,
+        #     {"create_output": "create_output", "handle_errors": "handle_errors"}
+        # )
+        # workflow.add_conditional_edges(
+        #     "create_output",
+        #     self._route_after_output,
+        #     {END: END, "handle_errors": "handle_errors"}
+        # )
 
         return workflow.compile()
 
@@ -155,49 +153,8 @@ class LangGraphAgent:
 
             job_data = await self.job_extractor.extract_job_info(state["job_url"])
 
-            # Check if extraction failed and provide mock data as fallback
-            description = job_data.get("description", "")
-            if not description or "[FAILED]" in description or len(description.strip()) < 50:
-                # Provide mock job data for demonstration
-                mock_description = """
-                We are looking for a Senior Full-Stack Engineer to join our dynamic team at Legora AB.
-
-                Key Responsibilities:
-                - Design, develop, and maintain scalable web applications using modern technologies
-                - Collaborate with cross-functional teams including product, design, and backend engineers
-                - Implement responsive user interfaces with React and modern frontend frameworks
-                - Build robust backend APIs and services using Node.js and cloud platforms
-                - Participate in code reviews, technical discussions, and architectural decisions
-                - Ensure code quality through testing, documentation, and best practices
-
-                Required Qualifications:
-                - 5+ years of full-stack development experience
-                - Strong proficiency in React, Node.js, and JavaScript/TypeScript
-                - Experience with modern web development tools and practices
-                - Knowledge of database design and SQL/NoSQL databases
-                - Experience with cloud platforms (AWS, Azure, or GCP)
-                - Familiarity with DevOps practices and CI/CD pipelines
-                - Excellent problem-solving skills and attention to detail
-
-                Preferred Skills:
-                - Experience with microservices architecture
-                - Knowledge of containerization (Docker, Kubernetes)
-                - Understanding of security best practices
-                - Experience with agile development methodologies
-
-                What We Offer:
-                - Competitive salary and equity package
-                - Flexible working hours and remote work options
-                - Professional development opportunities and conferences
-                - Modern tech stack and collaborative environment
-                - Health and wellness benefits
-                - Opportunity to work on impactful products in a growing startup
-                """
-                job_data = {
-                    "title": job_data.get("title", "Senior Full-Stack Engineer"),
-                    "company": job_data.get("company", "Legora AB"),
-                    "description": mock_description.strip()
-                }
+            if job_data.get("error"):
+                raise Exception(f"Job extraction failed: {job_data['error']}")
 
             return {
                 "job_description": job_data["description"],
@@ -207,38 +164,8 @@ class LangGraphAgent:
             }
 
         except Exception as e:
-            # For testing/demo purposes, provide a mock job description if extraction fails
-            mock_job_data = {
-                "title": "Senior Full-Stack Engineer",
-                "company": "Legora AB",
-                "description": """
-                We are looking for a Senior Full-Stack Engineer to join our team.
-
-                Responsibilities:
-                - Design and develop scalable web applications
-                - Work with modern frontend and backend technologies
-                - Collaborate with cross-functional teams
-                - Participate in code reviews and technical discussions
-
-                Requirements:
-                - 5+ years of full-stack development experience
-                - Proficiency in React, Node.js, and modern web technologies
-                - Experience with cloud platforms (AWS/Azure)
-                - Strong problem-solving skills and attention to detail
-
-                Benefits:
-                - Competitive salary and equity package
-                - Flexible working hours
-                - Professional development opportunities
-                - Modern tech stack and collaborative environment
-                """
-            }
-            return {
-                "job_description": mock_job_data["description"],
-                "job_company": mock_job_data["company"],
-                "job_title": mock_job_data["title"],
-                "status": "job_extracted"
-            }
+            # Re-raise exception to stop the workflow
+            raise Exception(f"Job extraction failed: {str(e)}")
 
     async def _retrieve_context_node(self, state: AgentState) -> AgentState:
         """Node for retrieving relevant context from RAG"""
@@ -289,6 +216,9 @@ class LangGraphAgent:
                 job_info,
                 state["rag_context"]
             )
+            
+            if 'error' in cv_content:
+                raise Exception(cv_content['error'])
 
             return {
                 "cv_content": cv_content,
@@ -297,10 +227,7 @@ class LangGraphAgent:
             }
 
         except Exception as e:
-            return {
-                "errors": [f"CV generation failed: {str(e)}"],
-                "status": "error"
-            }
+            raise Exception(f"CV generation failed: {str(e)}")
 
     async def _generate_cover_letter_node(self, state: AgentState) -> AgentState:
         """Node for generating cover letter"""

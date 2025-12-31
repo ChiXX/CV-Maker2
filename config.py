@@ -62,13 +62,7 @@ def load_user_personal_info(user_name: str) -> Dict[str, Any]:
     return {}
 
 
-def save_user_personal_info(user_name: str, data: Dict[str, Any]) -> None:
-    """Save user's personal information to file"""
-    user_paths = get_user_paths(user_name)
-    personal_info_file = user_paths["personal_info"]
-    personal_info_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(personal_info_file, 'w', encoding='utf-8') as f:
-        yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
 
 
 class Config:

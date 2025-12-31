@@ -26,7 +26,7 @@ except ImportError:
     pass  # python-dotenv not installed, use system environment variables
 
 from agent import CVAgent
-from config import Config, CVCLConfig, save_user_personal_info
+from config import Config, CVCLConfig
 
 console = Console()
 app = typer.Typer(
@@ -206,58 +206,14 @@ def setup_rag(
 
 
 @app.command()
-def init_config(
-    output_file: Annotated[
-        pathlib.Path,
-        typer.Argument(help="Path where config file should be created")
-    ] = pathlib.Path("cv-agent-config.yaml"),
-):
+def init_config():
     """
     Generate a default configuration file for the CV agent.
     """
     try:
         # Create a template personal info file
         from config import get_user_paths
-        template_data = {
-            "name": "Your Full Name",
-            "email": "your.email@example.com",
-            "phone": "+1-234-567-8900",
-            "location": {
-                "city": "Your City",
-                "country": "Your Country"
-            },
-            "linkedin": "https://linkedin.com/in/yourprofile",
-            "website": "https://yourwebsite.com",
-            "summary": "Brief professional summary highlighting your key strengths and experience.",
-            "skills": ["Skill 1", "Skill 2", "Skill 3"],
-            "experiences": [
-                {
-                    "company": "Previous Company",
-                    "position": "Your Position",
-                    "start_date": "2020-01",
-                    "end_date": "2023-12",
-                    "description": "Description of your role and achievements.",
-                    "technologies": ["Tech 1", "Tech 2"]
-                }
-            ],
-            "education": [
-                {
-                    "institution": "University Name",
-                    "degree": "Bachelor of Science",
-                    "field": "Computer Science",
-                    "graduation_year": 2023
-                }
-            ],
-            "projects": [
-                {
-                    "name": "Project Name",
-                    "description": "Description of the project and your contributions.",
-                    "technologies": ["Tech 1", "Tech 2"],
-                    "url": "https://github.com/yourusername/project"
-                }
-            ]
-        }
-        save_user_personal_info("template_user", template_data)
+        
         user_paths = get_user_paths("template_user")
         console.print(f"[bold green]✅ User config template created:[/bold green] {user_paths['personal_info']}")
         console.print("[dim]Edit this file with your personal information before running the agent.[/dim]")
@@ -273,16 +229,11 @@ def graph(
         pathlib.Path | None,
         typer.Option("--config", "-c", help="Path to configuration file")
     ] = None,
-    output_file: Annotated[
-        pathlib.Path | None,
-        typer.Option("--output", "-o", help="Output file for graph (PNG or DOT). PNG requires system graphviz, DOT works with Python package only")
-    ] = None,
 ):
     """
-    Display or save the agent graph visualization.
+    Generate and save the agent graph visualization as workflow.png.
 
-    Shows the LangGraph workflow structure with all nodes and edges.
-    Use --output to save as PNG image (requires system graphviz) or DOT file (Python package only).
+    Creates a PNG image of the LangGraph workflow structure with all nodes and edges.
     """
     try:
         # Load configuration
@@ -294,13 +245,23 @@ def graph(
         from langgraph_agent import LangGraphAgent
         agent = LangGraphAgent(config, verbose=False)
 
-        if output_file:
-            # Save as image
-            agent.save_graph_image(str(output_file))
-        else:
-            # Display text visualization
-            graph_viz = agent.get_graph_visualization()
-            console.print(graph_viz)
+        # Hardcoded output path
+        output_file = "workflow.png"
+
+        # Try to generate PNG using LangGraph's built-in method first
+        try:
+            png_image = agent.graph.get_graph().draw_png()
+
+            # Save to file
+            with open(output_file, "wb") as f:
+                f.write(png_image)
+
+            console.print(f"[green]Graph image saved to: {output_file}[/green]")
+        except ImportError as graphviz_error:
+            # Fallback to custom graphviz implementation
+            console.print(f"[yellow]⚠️ LangGraph draw_png() failed: {str(graphviz_error)}[/yellow]")
+            console.print("[yellow]Falling back to custom graphviz implementation...[/yellow]")
+            agent.save_graph_image(output_file)
 
     except ImportError as e:
         console.print(f"[bold red]❌ Missing dependency:[/bold red] {str(e)}")
